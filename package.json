@@ -46,6 +46,12 @@
     },
     "testTimeout": 30000
   },
+  "mongodbMemoryServer": {
+    "version": "7.0.3",
+    "downloadDir": "./.cache/mongodb-memory-server",
+    "platform": "linux",
+    "arch": "x64"
+  },
   "engines": {
     "node": ">=18.0.0"
   }
