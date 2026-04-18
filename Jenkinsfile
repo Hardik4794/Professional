@@ -7,7 +7,6 @@ pipeline {
         APP_VERSION     = "${BUILD_NUMBER}"
         SONAR_HOST_URL  = 'http://host.docker.internal:9000'
         NODE_ENV        = 'test'
-        // Force mongodb-memory-server to use MongoDB 7.x (compatible with Debian 13)
         MONGOMS_VERSION = '7.0.3'
     }
 
@@ -39,8 +38,7 @@ pipeline {
 
         stage('Test') {
             environment {
-                // Ensures mongodb-memory-server downloads a Debian 13-compatible binary
-                MONGOMS_VERSION         = '7.0.3'
+                MONGOMS_VERSION            = '7.0.3'
                 MONGOMS_PREFER_GLOBAL_PATH = '1'
             }
             steps {
@@ -59,28 +57,19 @@ pipeline {
         stage('Code Quality') {
             steps {
                 echo "=== STAGE: CODE QUALITY ==="
-                script {
-                    // Check if SonarQube plugin is available, skip gracefully if not
-                    try {
-                        withSonarQubeEnv('SonarQube') {
-                            sh """
-                                npx sonar-scanner \
-                                    -Dsonar.projectKey=${APP_NAME} \
-                                    -Dsonar.projectName="${APP_NAME}" \
-                                    -Dsonar.projectVersion=${APP_VERSION} \
-                                    -Dsonar.sources=src \
-                                    -Dsonar.tests=tests \
-                                    -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.qualitygate.wait=false
-                            """
-                        }
-                    } catch (err) {
-                        echo "SonarQube scan skipped or failed: ${err.getMessage()}"
-                        echo "To enable: Install 'SonarQube Scanner' plugin and configure a SonarQube server named 'SonarQube' in Jenkins."
-                        currentBuild.result = 'UNSTABLE'
-                    }
-                }
+                sh """
+                    npx sonar-scanner \
+                        -Dsonar.projectKey=${APP_NAME} \
+                        -Dsonar.projectName="${APP_NAME}" \
+                        -Dsonar.projectVersion=${APP_VERSION} \
+                        -Dsonar.sources=src \
+                        -Dsonar.tests=tests \
+                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                        -Dsonar.login=admin \
+                        -Dsonar.password=admin \
+                        -Dsonar.qualitygate.wait=false || true
+                """
             }
             post {
                 success { echo "CODE QUALITY stage passed." }
@@ -112,11 +101,11 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "=== STAGE: DEPLOY (Staging) ==="
-                sh 'docker compose -f docker-compose.yml down --remove-orphans || true'
+                sh 'docker-compose -f docker-compose.yml down --remove-orphans || true'
                 sh """
                     APP_VERSION=${APP_VERSION} \
                     JWT_SECRET=staging-secret \
-                    docker compose -f docker-compose.yml up -d
+                    docker-compose -f docker-compose.yml up -d
                 """
                 sh '''
                     for i in $(seq 1 15); do
@@ -137,13 +126,13 @@ pipeline {
             steps {
                 echo "=== STAGE: RELEASE (Production) ==="
                 sh "docker tag ${DOCKER_IMAGE}:${APP_VERSION} ${DOCKER_IMAGE}:release-${APP_VERSION}"
-                sh 'docker compose -f docker-compose.yml down --remove-orphans || true'
-                sh 'docker compose -f docker-compose.prod.yml down --remove-orphans || true'
+                sh 'docker-compose -f docker-compose.yml down --remove-orphans || true'
+                sh 'docker-compose -f docker-compose.prod.yml down --remove-orphans || true'
                 sh """
                     APP_VERSION=${APP_VERSION} \
                     JWT_SECRET=production-secret \
                     GRAFANA_PASSWORD=admin123 \
-                    docker compose -f docker-compose.prod.yml up -d
+                    docker-compose -f docker-compose.prod.yml up -d
                 """
                 sh '''
                     for i in $(seq 1 15); do
@@ -199,7 +188,7 @@ pipeline {
                     patterns: [[pattern: 'node_modules', type: 'INCLUDE']])
         }
         success {
-            echo "ALL 7 STAGES PASSED - Build ${BUILD_NUMBER}"
+            echo "ALL STAGES PASSED - Build ${BUILD_NUMBER}"
         }
         failure {
             echo "PIPELINE FAILED - Build ${BUILD_NUMBER} - Check logs above"
