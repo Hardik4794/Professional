@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  app:
+    image: task-manager-api:${APP_VERSION:-latest}
+    container_name: taskmanager-production
+    ports:
+      - "80:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/taskmanager_production
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      - APP_VERSION=${APP_VERSION}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: always
+    networks:
+      - taskmanager-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  mongo:
+    image: mongo:6.0
+    container_name: mongo-production
+    volumes:
+      - mongo-prod-data:/data/db
+    networks:
+      - taskmanager-net
+    restart: always
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-prod
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - taskmanager-net
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-prod
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana-prod-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - taskmanager-net
+    restart: always
+
+networks:
+  taskmanager-net:
+    driver: bridge
+
+volumes:
+  mongo-prod-data:
+  grafana-prod-data:
