@@ -1,22 +1,25 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-
+ 
 alerting:
   alertmanagers:
     - static_configs:
         - targets: []
-
+ 
 rule_files:
   - "alert_rules.yml"
-
+ 
 scrape_configs:
+  # Scrape the production Task Manager API
   - job_name: 'task-manager-api'
     static_configs:
-      - targets: ['app:3000']
+      - targets: ['task-manager-prod:3000']
     metrics_path: '/metrics'
     scrape_interval: 10s
-
+ 
+  # Scrape Prometheus itself
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+ 
