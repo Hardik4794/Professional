@@ -101,11 +101,26 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "=== STAGE: DEPLOY (Staging) ==="
-                sh 'docker-compose -f docker-compose.yml down --remove-orphans || true'
+                sh 'docker stop task-manager-staging mongo-staging || true'
+                sh 'docker rm task-manager-staging mongo-staging || true'
+                sh 'docker network rm staging-network || true'
+                sh 'docker network create staging-network || true'
                 sh """
-                    APP_VERSION=${APP_VERSION} \
-                    JWT_SECRET=staging-secret \
-                    docker-compose -f docker-compose.yml up -d
+                    docker run -d \
+                        --name mongo-staging \
+                        --network staging-network \
+                        mongo:7.0
+                """
+                sh """
+                    docker run -d \
+                        --name task-manager-staging \
+                        --network staging-network \
+                        -p 3000:3000 \
+                        -e NODE_ENV=staging \
+                        -e JWT_SECRET=staging-secret \
+                        -e MONGODB_URI=mongodb://mongo-staging:27017/taskmanager \
+                        -e APP_VERSION=${APP_VERSION} \
+                        ${DOCKER_IMAGE}:${APP_VERSION}
                 """
                 sh '''
                     for i in $(seq 1 15); do
@@ -126,13 +141,29 @@ pipeline {
             steps {
                 echo "=== STAGE: RELEASE (Production) ==="
                 sh "docker tag ${DOCKER_IMAGE}:${APP_VERSION} ${DOCKER_IMAGE}:release-${APP_VERSION}"
-                sh 'docker-compose -f docker-compose.yml down --remove-orphans || true'
-                sh 'docker-compose -f docker-compose.prod.yml down --remove-orphans || true'
+                sh 'docker stop task-manager-staging mongo-staging || true'
+                sh 'docker rm task-manager-staging mongo-staging || true'
+                sh 'docker network rm staging-network || true'
+                sh 'docker stop task-manager-prod mongo-prod || true'
+                sh 'docker rm task-manager-prod mongo-prod || true'
+                sh 'docker network rm prod-network || true'
+                sh 'docker network create prod-network || true'
                 sh """
-                    APP_VERSION=${APP_VERSION} \
-                    JWT_SECRET=production-secret \
-                    GRAFANA_PASSWORD=admin123 \
-                    docker-compose -f docker-compose.prod.yml up -d
+                    docker run -d \
+                        --name mongo-prod \
+                        --network prod-network \
+                        mongo:7.0
+                """
+                sh """
+                    docker run -d \
+                        --name task-manager-prod \
+                        --network prod-network \
+                        -p 80:3000 \
+                        -e NODE_ENV=production \
+                        -e JWT_SECRET=production-secret \
+                        -e MONGODB_URI=mongodb://mongo-prod:27017/taskmanager \
+                        -e APP_VERSION=${APP_VERSION} \
+                        ${DOCKER_IMAGE}:release-${APP_VERSION}
                 """
                 sh '''
                     for i in $(seq 1 15); do
@@ -167,10 +198,9 @@ pipeline {
                 '''
                 sh '''
                     echo "=========================================="
-                    echo "  Prometheus:  http://localhost:9090"
-                    echo "  Grafana:     http://localhost:3001 (admin/admin123)"
-                    echo "  App Metrics: http://localhost/metrics"
-                    echo "  App Health:  http://localhost/health"
+                    echo "  App (Staging):  http://localhost:3000"
+                    echo "  App (Prod):     http://localhost:80"
+                    echo "  App Health:     http://localhost/health"
                     echo "=========================================="
                 '''
             }
