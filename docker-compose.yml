@@ -1,5 +1,5 @@
 version: '3.8'
-
+ 
 services:
   app:
     image: task-manager-api:${APP_VERSION:-latest}
@@ -24,9 +24,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
+ 
   mongo:
-    image: mongo:6.0
+    image: mongo:7.0
     container_name: mongo-staging
     ports:
       - "27017:27017"
@@ -39,7 +39,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
+ 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -47,11 +47,12 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
     networks:
       - taskmanager-net
     depends_on:
       - app
-
+ 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -59,19 +60,20 @@ services:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
       - taskmanager-net
     depends_on:
       - prometheus
-
+ 
 networks:
   taskmanager-net:
     driver: bridge
-
+ 
 volumes:
   mongo-data:
   grafana-data:
