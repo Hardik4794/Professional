@@ -63,7 +63,7 @@ pipeline {
                         -e NODE_ENV=test \
                         -e JWT_SECRET=test-secret \
                         node:18 \
-                        sh -c "npm install --silent && npm test -- --ci --forceExit"
+                        sh -c "npm install --silent && npx jest --ci --forceExit"
                 '''
             }
 
