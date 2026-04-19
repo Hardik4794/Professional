@@ -17,9 +17,6 @@ pipeline {
 
     stages {
 
-        // ─────────────────────────────────────────────
-        // STAGE 1: BUILD
-        // ─────────────────────────────────────────────
         stage('Build') {
             steps {
                 echo "=== STAGE: BUILD ==="
@@ -41,14 +38,9 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 2: TEST
-        // ─────────────────────────────────────────────
         stage('Test') {
             steps {
                 echo "=== STAGE: TEST ==="
-
-                // Create test network and MongoDB — run both on same network
                 sh 'docker network create test-network || true'
                 sh 'docker stop mongo-test || true && docker rm mongo-test || true'
                 sh '''
@@ -58,8 +50,6 @@ pipeline {
                         mongo:7.0
                 '''
                 sh 'sleep 10'
-
-                // Run tests inside a Node container on the same network
                 sh '''
                     docker run --rm \
                         --network test-network \
@@ -69,9 +59,8 @@ pipeline {
                         -e NODE_ENV=test \
                         -e JWT_SECRET=test-secret \
                         node:18 \
-                        sh -c "npm test -- --ci --forceExit || true"
+                        sh -c "npm install --silent && npm test -- --ci --forceExit || true"
                 '''
-
                 echo "Tests completed"
             }
             post {
@@ -86,9 +75,6 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 3: CODE QUALITY (SonarQube)
-        // ─────────────────────────────────────────────
         stage('Code Quality') {
             steps {
                 echo "=== STAGE: CODE QUALITY ==="
@@ -114,9 +100,6 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 4: SECURITY
-        // ─────────────────────────────────────────────
         stage('Security') {
             steps {
                 echo "=== STAGE: SECURITY ==="
@@ -139,9 +122,6 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 5: DEPLOY (Staging)
-        // ─────────────────────────────────────────────
         stage('Deploy') {
             steps {
                 echo "=== STAGE: DEPLOY (Staging) ==="
@@ -179,19 +159,21 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 6: RELEASE (Production)
-        // ─────────────────────────────────────────────
         stage('Release') {
             steps {
                 echo "=== STAGE: RELEASE (Production) ==="
                 sh "docker tag ${DOCKER_IMAGE}:${APP_VERSION} ${DOCKER_IMAGE}:release-${APP_VERSION}"
+
+                // Tear down staging
                 sh 'docker stop task-manager-staging mongo-staging || true'
                 sh 'docker rm task-manager-staging mongo-staging || true'
                 sh 'docker network rm staging-network || true'
-                sh 'docker stop task-manager-prod mongo-prod || true'
-                sh 'docker rm task-manager-prod mongo-prod || true'
+
+                // Stop ALL containers using prod-network before removing it
+                sh 'docker stop task-manager-prod mongo-prod prometheus grafana || true'
+                sh 'docker rm task-manager-prod mongo-prod prometheus grafana || true'
                 sh 'docker network rm prod-network || true'
+
                 sh 'docker network create prod-network'
                 sh 'docker run -d --name mongo-prod --network prod-network --restart always mongo:7.0'
                 sh 'sleep 8'
@@ -223,16 +205,12 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
-        // STAGE 7: MONITORING
-        // ─────────────────────────────────────────────
         stage('Monitoring') {
             steps {
                 echo "=== STAGE: MONITORING ==="
                 sh 'docker stop prometheus grafana || true'
                 sh 'docker rm prometheus grafana || true'
 
-                // Start Prometheus
                 sh '''
                     docker run -d \
                         --name prometheus \
@@ -245,7 +223,6 @@ pipeline {
                 '''
                 sh 'sleep 5'
 
-                // Inject config via exec
                 sh '''
                     docker exec prometheus sh -c 'cat > /etc/prometheus/prometheus.yml << EOF
 global:
@@ -264,7 +241,6 @@ EOF'
                     curl -s -X POST http://localhost:9090/-/reload || true
                 '''
 
-                // Start Grafana
                 sh '''
                     docker run -d \
                         --name grafana \
@@ -277,7 +253,6 @@ EOF'
                 '''
                 sh 'sleep 15'
 
-                // Verify services
                 sh '''
                     echo "--- Prometheus status ---"
                     curl -s -o /dev/null -w "Prometheus: HTTP %{http_code}\n" http://localhost:9090/-/ready || echo "Prometheus not ready"
@@ -289,7 +264,6 @@ EOF'
                     curl -s http://localhost/metrics | head -5 || echo "Metrics not available yet"
                 '''
 
-                // Add Grafana datasource
                 sh '''
                     sleep 5
                     curl -s -X POST \
@@ -300,7 +274,6 @@ EOF'
                     echo "Grafana datasource configured"
                 '''
 
-                // Load simulation
                 sh '''
                     for i in $(seq 1 10); do
                         curl -s http://localhost/health > /dev/null || true
