@@ -1,7 +1,5 @@
-const request = require('supertest');
-
-describe('Basic Test', () => {
-  it('should return true', () => {
-    expect(true).toBe(true);
+describe('Basic Test Suite', () => {
+  test('Sample test should pass', () => {
+    expect(1 + 1).toBe(2);
   });
 });
