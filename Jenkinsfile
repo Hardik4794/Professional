@@ -89,7 +89,7 @@ pipeline {
                         -Dsonar.sources=src \
                         -Dsonar.tests=tests \
                         -Dsonar.host.url=http://host.docker.internal:9000 \
-                        -Dsonar.qualitygate.wait=false \
+                        -Dsonar.qualitygate.wait=true \
                         -Dsonar.login=\$(cat /var/jenkins_home/sonar-token.txt 2>/dev/null || echo "no-token") || true
                 """
                 echo "Code Quality analysis completed - check SonarQube at http://localhost:9000"
